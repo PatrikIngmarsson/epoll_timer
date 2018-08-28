@@ -52,6 +52,8 @@ void EpollFd::Start() {
                         c();
                         chore_count++;
                     }
+                    // Guard this maybeeee?
+                    chores_.clear();
                     uint64_t dummy;
                     for(unsigned int i = 0; i < chore_count; i++) {
                         if(-1 == read(event_fd_, &dummy, sizeof(dummy))) {
