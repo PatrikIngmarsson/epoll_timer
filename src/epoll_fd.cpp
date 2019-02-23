@@ -15,7 +15,7 @@ namespace dispatcher {
 constexpr int EPOLL_WAIT_ETERNAL = -1;
 constexpr unsigned int MAXIMUM_NUMBER_OF_EVENTS_HANDLED = 8;
 
-EpollFd::EpollFd() : 
+EpollFd::EpollFd() :
     epoll_fd_(epoll_create1(EPOLL_CLOEXEC)),
     event_fd_(eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE)),
     is_to_run_(false) {
@@ -67,14 +67,14 @@ void EpollFd::Start() {
                         if(-1 != read(iter->first, &s, sizeof(s))) {
                             iter->second();
                             close(iter->first);
-                        } 
+                        }
                     }
                 }
             }
         }});
 }
 
-void EpollFd::Stop() { 
+void EpollFd::Stop() {
     is_to_run_ = false;
     AddChore([](){});
     worker_thread_.join();
