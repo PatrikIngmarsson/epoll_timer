@@ -4,16 +4,19 @@ project(epoll_timer)
 
 option(EPOLL_TIMER_UT "Unit tests for epoll timer" OFF)
 option(EPOLL_TIMER_TEST_EXECUTABLE "Executable to test functionality" OFF)
+option(EPOLL_TIMER_INSTALL "Install epoll_time" OFF)
 
 set (CMAKE_CXX_STANDARD 14)
 
-add_library(epoll_timer_lib
+add_library(epoll_timer_lib SHARED
     src/epoll_fd.cpp
     src/file_descriptor.cpp)
-target_include_directories(epoll_timer_lib PUBLIC include)
-target_include_directories(epoll_timer_lib PUBLIC src)
+target_include_directories(epoll_timer_lib 
+    PUBLIC include
+    PRIVATE src
+)
 
-if( ${EPOLL_TIMER_TEST_EXECUTABLE})
+if(${EPOLL_TIMER_TEST_EXECUTABLE})
     find_package(Threads REQUIRED)
     add_executable(epoll_timer src/main.cpp)
     target_include_directories(epoll_timer PUBLIC include src)
@@ -22,7 +25,7 @@ if( ${EPOLL_TIMER_TEST_EXECUTABLE})
         Threads::Threads)
 endif()
 
-if (${EPOLL_TIMER_UT})
+if(${EPOLL_TIMER_UT})
     # Google Test
     add_subdirectory(lib/googletest/googletest)
     enable_testing()
@@ -35,5 +38,12 @@ if (${EPOLL_TIMER_UT})
         gtest
         gtest_main)
     add_test(test_epoll_timer_ut test_epoll_timer)
+endif()
 
+if(${EPOLL_TIMER_INSTALL})
+    install(TARGETS epoll_timer_lib
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        PUBLIC_HEADER DESTINATION include
+    )
 endif()
