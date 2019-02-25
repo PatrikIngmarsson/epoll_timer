@@ -2,7 +2,7 @@
 #include "gtest/gtest.h"
 #include <mutex>
 
-#include "epoll_fd.hpp"
+#include "event_dispatcher.hpp"
 
 class TestSuite: public ::testing::Test {
 protected:
@@ -18,21 +18,18 @@ protected:
 
     virtual void TearDown() override {
     }
-    aztrixiania::base::dispatcher::EpollFd epoll_queue_;
+    aztrixiania::base::dispatcher::EventDispatcher epoll_queue_;
 };
 
 TEST_F(TestSuite, TestOne) {
-
     std::mutex guard_;
     int i = 0;
-    std::cerr << "dsfdsf" << std::endl;
     guard_.lock();
     epoll_queue_.Start();
-    epoll_queue_.AddChore([&](){std::cerr << "hej " << i++ << std::endl; guard_.unlock();});
-    
+    epoll_queue_.AddChore([&](){i++; guard_.unlock();});
     guard_.lock();
 
-    EXPECT_EQ(1, 1);
+    EXPECT_EQ(1, i);
     epoll_queue_.Stop();
 }
 

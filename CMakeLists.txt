@@ -8,21 +8,21 @@ option(EPOLL_TIMER_INSTALL "Install epoll_time" OFF)
 
 set (CMAKE_CXX_STANDARD 14)
 
-add_library(epoll_timer_lib SHARED
-    src/epoll_fd.cpp
+find_package(Threads REQUIRED)
+
+add_library(event_dispatcher
+    src/event_dispatcher.cpp
     src/file_descriptor.cpp)
-target_include_directories(epoll_timer_lib 
+target_include_directories(event_dispatcher
     PUBLIC include
-    PRIVATE src
 )
+target_link_libraries(event_dispatcher Threads::Threads)
 
 if(${EPOLL_TIMER_TEST_EXECUTABLE})
-    find_package(Threads REQUIRED)
     add_executable(epoll_timer src/main.cpp)
-    target_include_directories(epoll_timer PUBLIC include src)
+    target_include_directories(epoll_timer PUBLIC include)
     target_link_libraries(epoll_timer
-         epoll_timer_lib
-        Threads::Threads)
+        event_dispatcher)
 endif()
 
 if(${EPOLL_TIMER_UT})
@@ -34,16 +34,17 @@ if(${EPOLL_TIMER_UT})
     # Unit tests
     add_executable(test_epoll_timer test/test_suite.cpp)
     target_link_libraries(test_epoll_timer
-        epoll_timer_lib
+        event_dispatcher 
         gtest
         gtest_main)
     add_test(test_epoll_timer_ut test_epoll_timer)
 endif()
 
 if(${EPOLL_TIMER_INSTALL})
-    install(TARGETS epoll_timer_lib
+    install(TARGETS event_dispatcher
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         PUBLIC_HEADER DESTINATION include
+        ARCHIVE DESTINATION lib
     )
 endif()

@@ -15,18 +15,20 @@ namespace dispatcher {
 
 using Chore = std::function<void()>;
 
-class EpollFd {
+class EventDispatcher{
 public:
-    EpollFd();
-    ~EpollFd();
+    EventDispatcher();
+    ~EventDispatcher();
 
     void Start();
     void Stop();
     bool GetRunCondition();
 
     void AddChore(Chore&& chore);
-    void AddChoreWithDelay(Chore&& chore, int sec);
-    //void AddChoreWithFd(Chore&& chore, int fd);
+    void AddChoreWithDelay(Chore&& chore, int ms);
+    void AddChoreWithFd(Chore&& chore, int fd, int events);
+
+    void RemoveChore(int fd);
 
 private:
     const FileDescriptor epoll_fd_;

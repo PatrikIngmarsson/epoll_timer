@@ -1,4 +1,4 @@
-#include "epoll_fd.hpp"
+#include "event_dispatcher.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -15,7 +15,7 @@ namespace dispatcher {
 constexpr int EPOLL_WAIT_ETERNAL = -1;
 constexpr unsigned int MAXIMUM_NUMBER_OF_EVENTS_HANDLED = 8;
 
-EpollFd::EpollFd() :
+EventDispatcher::EventDispatcher() :
     epoll_fd_(epoll_create1(EPOLL_CLOEXEC)),
     event_fd_(eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE)),
     is_to_run_(false) {
@@ -27,12 +27,12 @@ EpollFd::EpollFd() :
         }
 }
 
-EpollFd::~EpollFd() {
+EventDispatcher::~EventDispatcher() {
 }
 
-bool EpollFd::GetRunCondition() { return is_to_run_; }
+bool EventDispatcher::GetRunCondition() { return is_to_run_; }
 
-void EpollFd::Start() {
+void EventDispatcher::Start() {
 
     worker_thread_ = std::thread([this](){
         is_to_run_ = true;
@@ -74,20 +74,20 @@ void EpollFd::Start() {
         }});
 }
 
-void EpollFd::Stop() {
+void EventDispatcher::Stop() {
     is_to_run_ = false;
     AddChore([](){});
     worker_thread_.join();
     std::cout << "Closed.." << std::endl;
 }
-void EpollFd::AddChore(Chore&& chore) {
+void EventDispatcher::AddChore(Chore&& chore) {
     chores_.push_back(chore);
     const uint64_t dummy = 1;
     if(-1 == write(event_fd_, &dummy, sizeof(dummy))) {
         std::cerr << "Unable to send event for chore: " << strerror(errno) << std::endl;
     }
 }
-void EpollFd::AddChoreWithDelay(Chore&& chore, int sec) {
+void EventDispatcher::AddChoreWithDelay(Chore&& chore, int ms) {
     int timed_fd(timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC));
     if(0 > timed_fd) {
         std::cerr << "Failed to create timed fd: " << strerror(errno) << std::endl;
@@ -106,8 +106,8 @@ void EpollFd::AddChoreWithDelay(Chore&& chore, int sec) {
     struct itimerspec timer;
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_nsec = 0;
-    timer.it_value.tv_sec = sec;
-    timer.it_value.tv_nsec = 0;
+    timer.it_value.tv_sec = 0;
+    timer.it_value.tv_nsec = ms * 1000;
     if(-1 == timerfd_settime(timed_fd, 0, &timer, nullptr)) {
         std::cerr << "Couldn't set the timer: " << strerror(errno) << std::endl;
         close(timed_fd);
@@ -115,6 +115,36 @@ void EpollFd::AddChoreWithDelay(Chore&& chore, int sec) {
     }
     delayed_chores_[timed_fd] = chore;
 }
+
+void EventDispatcher::AddChoreWithFd(Chore&& chore, int fd, int events) {
+
+    std::cout << __FUNCTION__ << std::endl;
+
+    RemoveChore(fd);
+
+    epoll_event event;
+    event.events = events;
+    event.data.fd = fd;
+
+    if(-1 == epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &event)) {
+        std::cerr << "Couldn't add fd to monitor: " << strerror(errno) << std::endl;
+        return;
+    }
+    delayed_chores_[fd] = chore;
+}
+
+void EventDispatcher::RemoveChore(int fd) {
+
+    auto chore = delayed_chores_.find(fd);
+    if(chore != delayed_chores_.end()) {
+        if(-1 == epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr)) {
+            std::cerr << "Couldn't remove fd to monitor" << std::endl;
+            return;
+        }
+        delayed_chores_.erase(fd);
+    }
+}
+
 
 } // namespace dispatcher
 } // namespace base

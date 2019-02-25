@@ -12,14 +12,14 @@
 #include<thread>
 #include<chrono>
 
-#include "epoll_fd.hpp"
+#include "event_dispatcher.hpp"
 
 using namespace aztrixiania::base::dispatcher;
 
 int main(int argc, char * argv[]) {
     std::cout << "Starting Epoll Timer..." << std::endl;
 
-    EpollFd epoller;
+    EventDispatcher epoller;
 
     epoller.Start();
     std::cout << "Started.." << std::endl;
