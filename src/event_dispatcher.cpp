@@ -106,8 +106,8 @@ void EventDispatcher::AddChoreWithDelay(Chore&& chore, int ms) {
     struct itimerspec timer;
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_nsec = 0;
-    timer.it_value.tv_sec = 0;
-    timer.it_value.tv_nsec = ms * 1000;
+    timer.it_value.tv_sec = ms/1000;
+    timer.it_value.tv_nsec = (ms%1000) * 1000;
     if(-1 == timerfd_settime(timed_fd, 0, &timer, nullptr)) {
         std::cerr << "Couldn't set the timer: " << strerror(errno) << std::endl;
         close(timed_fd);
