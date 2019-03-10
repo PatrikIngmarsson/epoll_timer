@@ -6,6 +6,7 @@
 #include<sys/timerfd.h>
 #include<thread>
 #include<vector>
+#include<mutex>
 
 #include"file_descriptor.hpp"
 
@@ -34,6 +35,7 @@ private:
     const FileDescriptor epoll_fd_;
     const FileDescriptor event_fd_;
 
+    std::mutex chores_guard_;
     std::vector<Chore> chores_;
     std::map<int, Chore> delayed_chores_;
 

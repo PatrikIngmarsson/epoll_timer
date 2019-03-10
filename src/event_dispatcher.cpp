@@ -13,7 +13,7 @@ namespace base {
 namespace dispatcher {
 
 constexpr int EPOLL_WAIT_ETERNAL = -1;
-constexpr unsigned int MAXIMUM_NUMBER_OF_EVENTS_HANDLED = 8;
+constexpr unsigned int MAXIMUM_NUMBER_OF_EVENTS_HANDLED = 20;
 
 EventDispatcher::EventDispatcher() :
     epoll_fd_(epoll_create1(EPOLL_CLOEXEC)),
@@ -23,7 +23,7 @@ EventDispatcher::EventDispatcher() :
         event.events = EPOLLIN;
         event.data.fd = -1;
         if(-1 == epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, event_fd_, &event)) {
-            throw std::runtime_error("Errrrrorrrrr");
+            throw std::runtime_error("Unable to initialize Event Dispatcher");
         }
 }
 
@@ -36,39 +36,45 @@ void EventDispatcher::Start() {
 
     worker_thread_ = std::thread([this](){
         is_to_run_ = true;
-        epoll_event events[MAXIMUM_NUMBER_OF_EVENTS_HANDLED];
+        epoll_event expired_events[MAXIMUM_NUMBER_OF_EVENTS_HANDLED];
         while(GetRunCondition()) {
-            int r = epoll_wait(epoll_fd_, events, MAXIMUM_NUMBER_OF_EVENTS_HANDLED, EPOLL_WAIT_ETERNAL);
-            if(-1 == r) {
+            int number_of_expired_events = epoll_wait(epoll_fd_, expired_events,
+                    MAXIMUM_NUMBER_OF_EVENTS_HANDLED, EPOLL_WAIT_ETERNAL);
+            if(-1 == number_of_expired_events) {
                 std::cerr << "Failed while waiting: " << strerror(errno) << std::endl;
                 continue;
             }
 
-            for(int i = 0; i < r; i++) {
-                const epoll_event& event = events[i];
+            for(int i = 0; i < number_of_expired_events; i++) {
+                const epoll_event& event = expired_events[i];
                 if(-1 == event.data.fd) {
-                    unsigned int chore_count = 0;
-                    for(auto c : chores_) {
-                        c();
-                        chore_count++;
-                    }
-                    // Guard this maybeeee?
-                    chores_.clear();
                     uint64_t dummy;
-                    for(unsigned int i = 0; i < chore_count; i++) {
-                        if(-1 == read(event_fd_, &dummy, sizeof(dummy))) {
-                            std::cerr << "Failed to read event: " << strerror(errno) << std::endl;
+                    if(-1 == read(event_fd_, &dummy, sizeof(dummy))) {
+                        std::string error_string("Failed to read event: ");
+                        error_string += strerror(errno);
+                        throw std::runtime_error(error_string);
+                    } else {
+                        Chore chore;
+                        {
+                            std::lock_guard<std::mutex> lock(chores_guard_);
+                            chore = chores_.front();
+                            chores_.erase(chores_.begin());
                         }
+                        chore();
                     }
                 } else {
-                    auto iter = delayed_chores_.find(event.data.fd);
-                    if(iter != delayed_chores_.end()) {
-                        size_t s = 0;
-                        if(-1 != read(iter->first, &s, sizeof(s))) {
-                            iter->second();
-                            close(iter->first);
+                    Chore chore;
+                    {
+                        std::lock_guard<std::mutex> lock(chores_guard_);
+                        chore = delayed_chores_.at(event.data.fd);
+                    }
+                    uint64_t dummy;
+                    if(-1 != read(epoll_fd_, &dummy, sizeof(dummy))) {
+                        if(-1 != read(event.data.fd, &dummy, sizeof(dummy))) {
+                            close(event.data.fd);
                         }
                     }
+                    chore();
                 }
             }
         }});
@@ -81,6 +87,7 @@ void EventDispatcher::Stop() {
     std::cout << "Closed.." << std::endl;
 }
 void EventDispatcher::AddChore(Chore&& chore) {
+    std::lock_guard<std::mutex> lock(chores_guard_);
     chores_.push_back(chore);
     const uint64_t dummy = 1;
     if(-1 == write(event_fd_, &dummy, sizeof(dummy))) {
@@ -113,14 +120,20 @@ void EventDispatcher::AddChoreWithDelay(Chore&& chore, int ms) {
         close(timed_fd);
         return;
     }
-    delayed_chores_[timed_fd] = chore;
+    {
+        std::lock_guard<std::mutex> lock(chores_guard_);
+        delayed_chores_[timed_fd] = chore;
+    }
 }
 
 void EventDispatcher::AddChoreWithFd(Chore&& chore, int fd, int events) {
 
     std::cout << __FUNCTION__ << std::endl;
 
-    RemoveChore(fd);
+    {
+        std::lock_guard<std::mutex> lock(chores_guard_);
+        RemoveChore(fd);
+    }
 
     epoll_event event;
     event.events = events;
@@ -130,7 +143,10 @@ void EventDispatcher::AddChoreWithFd(Chore&& chore, int fd, int events) {
         std::cerr << "Couldn't add fd to monitor: " << strerror(errno) << std::endl;
         return;
     }
-    delayed_chores_[fd] = chore;
+    {
+        std::lock_guard<std::mutex> lock(chores_guard_);
+        delayed_chores_[fd] = chore;
+    }
 }
 
 void EventDispatcher::RemoveChore(int fd) {
